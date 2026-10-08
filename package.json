@@ -4,10 +4,14 @@
   "private": true,
   "description": "FX-delta agent for Celo local stablecoin corridors (Agents on Open Rails hackathon)",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "spike:tag": "bun scripts/attribution-tag.ts",
     "spike:eip712": "bun scripts/eip712-domains.ts",
-    "spike:pools": "bun scripts/pool-inventory.ts"
+    "spike:pools": "bun scripts/pool-inventory.ts",
+    "test": "bun --filter fxdelta-tracker test"
   },
   "dependencies": {
     "@celo/attribution-tags": "^0.5.0",

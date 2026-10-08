@@ -1,0 +1,26 @@
+/**
+ * fxdelta-tracker — FX-delta engine for Celo local stablecoins (EPIC-191).
+ *
+ * Public barrel. Slices add: Celo price source (191-2), FX reference
+ * cascade (191-3), DeltaEngine port (191-4), x402 self-settle (191-6).
+ */
+
+export {
+  loadFxDeltaConfig,
+  getFxDeltaConfig,
+  resetFxDeltaConfigCache,
+} from "./env.js";
+export type {
+  CeloConfig,
+  FxConfig,
+  FxDeltaConfig,
+  FxProviderId,
+  PostgresConfig,
+  SelfSettleConfig,
+  TelegramConfig,
+  X402Config,
+  X402Mode,
+} from "./env.js";
+
+export { CORRIDORS, QUOTE_TOKENS, THIN_CORRIDORS, TVL_THRESHOLD_USD } from "./corridors.js";
+export type { Corridor } from "./corridors.js";
