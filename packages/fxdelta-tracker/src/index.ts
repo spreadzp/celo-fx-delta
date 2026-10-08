@@ -38,3 +38,11 @@ export type {
   CorridorPrice,
   OnCorridorPrice,
 } from "./celo/price-source.js";
+
+export { FxRefSource, marketPhase } from "./fx/ref-source.js";
+export type {
+  FxRefPrice,
+  FxRefSourceOptions,
+  MarketPhase,
+  OnFxPrice,
+} from "./fx/ref-source.js";

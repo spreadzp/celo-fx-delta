@@ -10,6 +10,27 @@
  * (wBRL/wCOP/wMXN/wPEN/wCLP, IDRX, BRLm/COPm…) show thin/no Uniswap pools —
  * their price source comes from 191-2 (FPMM / RFQ), not this table.
  * Re-run: bun scripts/pool-inventory.ts
+ *
+ * FX-reference coverage (SLICE-191-3, provider cascade erapi→frankfurter→bcptax):
+ *   fiat   erapi  frankfurter  bcptax
+ *   ARS     ✓       ✗ (non-ECB)   —
+ *   AUD     ✓       ✓             —
+ *   BRL     ✓       ✓             ✓
+ *   CHF     ✓       ✓             —
+ *   CLP     ✓       ✗             —
+ *   COP     ✓       ✗             —
+ *   EUR     ✓       ✓             —
+ *   GBP     ✓       ✓             —
+ *   GHS     ✓       ✗             —
+ *   IDR     ✓       ✗             —
+ *   JPY     ✓       ✓             —
+ *   KES     ✓       ✗             —
+ *   MXN     ✓       ✓             —
+ *   NGN     ✓       ✗             —
+ *   PEN     ✓       ✗             —
+ *   USD     fixed 1.0 (USAT corridor)
+ *   XOF     ✓       ✗             —
+ * Every active corridor fiat resolves via erapi (D-191-5 cascade covers).
  */
 
 import type { Address } from "viem";
