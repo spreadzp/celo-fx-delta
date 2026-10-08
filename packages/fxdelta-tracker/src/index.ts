@@ -46,3 +46,13 @@ export type {
   MarketPhase,
   OnFxPrice,
 } from "./fx/ref-source.js";
+
+export { DeltaEngine } from "./engine/delta-engine.js";
+export type {
+  DeltaAlert,
+  DeltaEngineOptions,
+  DeltaEvent,
+  DeltaSnapshot,
+  DeltaView,
+  HistoryPoint,
+} from "./engine/delta-engine.js";
