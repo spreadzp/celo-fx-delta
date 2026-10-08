@@ -24,3 +24,17 @@ export type {
 
 export { CORRIDORS, QUOTE_TOKENS, THIN_CORRIDORS, TVL_THRESHOLD_USD } from "./corridors.js";
 export type { Corridor } from "./corridors.js";
+
+export {
+  CeloPriceSource,
+  MENTO,
+  sqrtPriceToRate,
+  impliedRateLocalPerUsd,
+  oracleLag,
+  backoffMs,
+} from "./celo/price-source.js";
+export type {
+  CeloPriceSourceOptions,
+  CorridorPrice,
+  OnCorridorPrice,
+} from "./celo/price-source.js";

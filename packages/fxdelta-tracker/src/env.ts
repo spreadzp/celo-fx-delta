@@ -21,6 +21,8 @@
 export interface CeloConfig {
   rpcUrl: string;
   chainId: number;
+  /** Onchain poll interval (D-191-4); default 5s — Celo has ~1s blocks. */
+  pollMs: number;
 }
 
 export interface SelfSettleConfig {
@@ -74,6 +76,7 @@ export interface FxDeltaConfig {
 const DEFAULTS = {
   celoRpcUrl: "https://forno.celo.org",
   celoChainId: 42220,
+  celoPollMs: 5_000,
   x402Mode: "self" as X402Mode,
   facilitatorUrl: "https://api.x402.celo.org",
   priceUsd: 0.005,
@@ -125,6 +128,7 @@ export function loadFxDeltaConfig(): FxDeltaConfig {
   const celo: CeloConfig = {
     rpcUrl: process.env.CELO_RPC_URL?.trim() || DEFAULTS.celoRpcUrl,
     chainId: optionalNumber("CELO_CHAIN_ID", DEFAULTS.celoChainId, errors),
+    pollMs: optionalNumber("CELO_POLL_MS", DEFAULTS.celoPollMs, errors),
   };
 
   const attributionCode =
