@@ -25,7 +25,8 @@ import {
   encodeFunctionData,
   parseAbi,
   concat,
-  toHex,
+  pad,
+  zeroAddress,
   type Hex,
   type Address,
 } from "viem";
@@ -36,8 +37,15 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
-const IDENTITY_REGISTRY =
-  "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
+/**
+ * ERC-8004 Identity Registry — per-network canonical address
+ * (erc-8004/erc-8004-contracts): mainnet chains share 0x8004A169…,
+ * testnets share 0x8004A818….
+ */
+const IDENTITY_REGISTRY = {
+  celo: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+  celoSepolia: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+} as const;
 
 const USDC = {
   celo: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
@@ -66,6 +74,7 @@ const rpcUrl =
     : (process.env.CELO_SEPOLIA_RPC_URL ??
       "https://forno.celo-sepolia.celo-testnet.org");
 const dryRun = process.argv.includes("--dry-run");
+const registry = IDENTITY_REGISTRY[chainName];
 const tagCode =
   process.env.ATTRIBUTION_CODE ??
   (() => {
@@ -112,7 +121,7 @@ function buildAgentURI(): string {
     active: true,
     registrations: [
       {
-        agentRegistry: `eip155:${chain.id}:${IDENTITY_REGISTRY}`,
+        agentRegistry: `eip155:${chain.id}:${IDENTITY_REGISTRY[chainName]}`,
       },
     ],
     supportedTrust: ["reputation"],
@@ -131,32 +140,39 @@ async function findAgentId(
 ): Promise<bigint | null> {
   try {
     return (await pub.readContract({
-      address: IDENTITY_REGISTRY,
+      address: registry,
       abi: REGISTRY_ABI,
       functionName: "tokenOfOwnerByIndex",
       args: [owner, 0n],
     })) as bigint;
   } catch {
-    // Not enumerable — scan mint Transfers to owner (bounded).
-    const logs = await pub.getLogs({
-      address: IDENTITY_REGISTRY,
-      event: {
-        type: "event",
-        name: "Transfer",
-        inputs: [
-          { name: "from", type: "address", indexed: true },
-          { name: "to", type: "address", indexed: true },
-          { name: "tokenId", type: "uint256", indexed: true },
-        ],
-      },
-      args: {
-        from: "0x0000000000000000000000000000000000000000",
-        to: owner,
-      },
-      fromBlock: 0n,
-    });
-    const last = logs.at(-1);
-    return last ? (last.args.tokenId as bigint) : null;
+    // Not enumerable — scan mint Transfers newest→oldest in bounded
+    // windows (forno caps getLogs at 100k blocks per query).
+    const WINDOW = 100_000n;
+    let to = await pub.getBlockNumber();
+    while (to > 0n) {
+      const from = to > WINDOW ? to - WINDOW : 0n;
+      const logs = await pub.getLogs({
+        address: registry,
+        event: {
+          type: "event",
+          name: "Transfer",
+          inputs: [
+            { name: "from", type: "address", indexed: true },
+            { name: "to", type: "address", indexed: true },
+            { name: "tokenId", type: "uint256", indexed: true },
+          ],
+        },
+        args: { from: zeroAddress, to: owner },
+        fromBlock: from,
+        toBlock: to,
+      });
+      const last = logs.at(-1);
+      if (last) return last.args.tokenId as bigint;
+      if (from === 0n) break;
+      to = from - 1n;
+    }
+    return null;
   }
 }
 
@@ -176,7 +192,28 @@ async function main() {
     transport: http(rpcUrl),
   });
   const agentURI = buildAgentURI();
-  const feeCurrency = USDC[chainName];
+  // Fee abstraction only when USDC is held — native CELO otherwise.
+  const usdcAddr = USDC[chainName];
+  const usdcBal = await pub
+    .readContract({
+      address: usdcAddr,
+      abi: parseAbi(["function balanceOf(address) view returns (uint256)"]),
+      functionName: "balanceOf",
+      args: [account.address],
+    })
+    .catch(() => 0n);
+  const feeCurrency = usdcBal > 0n ? usdcAddr : undefined;
+  const nativeBal = await pub.getBalance({ address: account.address });
+  console.log(
+    `gas: ${feeCurrency ? "USDC fee abstraction" : "native CELO"} ` +
+      `(native=${nativeBal}, usdc=${usdcBal})`,
+  );
+  if (nativeBal === 0n && usdcBal === 0n) {
+    throw new Error(
+      "wallet unfunded — claim CELO at https://faucet.celo.org/celo-sepolia " +
+        "or USDC at https://faucet.circle.com",
+    );
+  }
 
   console.log(`chain: ${chainName} (${chain.id}) rpc=${rpcUrl}`);
   console.log(`owner: ${account.address}`);
@@ -189,7 +226,7 @@ async function main() {
     if (cached.chainId === chain.id) {
       try {
         const owner = (await pub.readContract({
-          address: IDENTITY_REGISTRY,
+          address: registry,
           abi: REGISTRY_ABI,
           functionName: "ownerOf",
           args: [BigInt(cached.agentId)],
@@ -209,7 +246,7 @@ async function main() {
 
   // ── AC3: onchain balance → reuse existing agentId ────────────────
   const balance = (await pub.readContract({
-    address: IDENTITY_REGISTRY,
+    address: registry,
     abi: REGISTRY_ABI,
     functionName: "balanceOf",
     args: [account.address],
@@ -221,7 +258,7 @@ async function main() {
       console.log(`existing agent onchain: agentId=${agentId}`);
       const record: IdentityCache = {
         chainId: chain.id,
-        registry: IDENTITY_REGISTRY,
+        registry: registry,
         owner: account.address,
         agentId: agentId.toString(),
         agentURI,
@@ -256,9 +293,9 @@ async function main() {
   }
 
   const txHash = await wallet.sendTransaction({
-    to: IDENTITY_REGISTRY,
+    to: registry,
     data: tagged,
-    feeCurrency, // USDC gas — no CELO needed (fee abstraction)
+    ...(feeCurrency ? { feeCurrency } : {}), // USDC gas when held
   });
   console.log(`tx sent: ${txHash}`);
   console.log(
@@ -270,12 +307,11 @@ async function main() {
     throw new Error(`register tx reverted: ${txHash}`);
   }
 
-  // agentId = tokenId from the mint Transfer log.
+  // agentId = tokenId from the mint Transfer log (from = 0x0).
   const mintLog = receipt.logs.find(
     (l) =>
-      l.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase() &&
-      l.topics[1] ===
-        toHex("0x0000000000000000000000000000000000000000", { size: 32 }),
+      l.address.toLowerCase() === registry.toLowerCase() &&
+      l.topics[1] === pad(zeroAddress, { size: 32 }),
   );
   if (!mintLog?.topics[3]) throw new Error("mint Transfer log not found");
   const agentId = BigInt(mintLog.topics[3]);
@@ -290,7 +326,7 @@ async function main() {
 
   const record: IdentityCache = {
     chainId: chain.id,
-    registry: IDENTITY_REGISTRY,
+    registry: registry,
     owner: account.address,
     agentId: agentId.toString(),
     agentURI,

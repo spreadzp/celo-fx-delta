@@ -11,10 +11,16 @@ Every transaction sent by this project carries an ERC-8021 attribution tag.
 
 ## ERC-8004 identity
 
-The agent registers on the canonical Identity Registry
-`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` (same address on Celo and
-Celo Sepolia). Registration is idempotent — re-running reads the cached
-`deployments/identity.json` or resolves the existing token onchain.
+The agent registers on the canonical Identity Registry —
+`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on Celo mainnet,
+`0x8004A818BFB912233c491871b3d84c89A494BD9e` on Celo Sepolia
+(testnets share the second address). Registration is idempotent —
+re-running reads the cached `deployments/identity.json` or resolves the
+existing token onchain.
+
+**Registered**: `agentId=552` on Celo Sepolia, tx
+[`0x709ac4…3303`](https://celo-sepolia.blockscout.com/tx/0x709ac46bacb206fac31fc3d8b52e3902336fa08b3acff49d1441ad06c4ed3303)
+— ERC-8021 tag `celo_24acc530146f` verified onchain.
 
 ```bash
 bun scripts/register-agent.ts --dry-run    # verify calldata + tag
