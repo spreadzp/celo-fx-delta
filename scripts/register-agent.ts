@@ -147,29 +147,44 @@ async function findAgentId(
     })) as bigint;
   } catch {
     // Not enumerable — scan mint Transfers newest→oldest in bounded
-    // windows (forno caps getLogs at 100k blocks per query).
-    const WINDOW = 100_000n;
+    // windows (forno mainnet caps getLogs at 5k blocks per query;
+    // lookback is bounded — enumerable registries never reach this path).
+    const WINDOW = 5_000n;
+    const MAX_LOOKBACK = 5_000_000n; // ~58 days at 1s blocks
     let to = await pub.getBlockNumber();
-    while (to > 0n) {
-      const from = to > WINDOW ? to - WINDOW : 0n;
-      const logs = await pub.getLogs({
-        address: registry,
-        event: {
-          type: "event",
-          name: "Transfer",
-          inputs: [
-            { name: "from", type: "address", indexed: true },
-            { name: "to", type: "address", indexed: true },
-            { name: "tokenId", type: "uint256", indexed: true },
-          ],
-        },
-        args: { from: zeroAddress, to: owner },
-        fromBlock: from,
-        toBlock: to,
-      });
+    const floor = to > MAX_LOOKBACK ? to - MAX_LOOKBACK : 0n;
+    while (to > floor) {
+      const from = to > WINDOW + floor ? to - WINDOW : floor;
+      let logs;
+      try {
+        logs = await pub.getLogs({
+          address: registry,
+          event: {
+            type: "event",
+            name: "Transfer",
+            inputs: [
+              { name: "from", type: "address", indexed: true },
+              { name: "to", type: "address", indexed: true },
+              { name: "tokenId", type: "uint256", indexed: true },
+            ],
+          },
+          args: { from: zeroAddress, to: owner },
+          fromBlock: from,
+          toBlock: to,
+        });
+      } catch (e) {
+        // forno is behind a load balancer — the node answering getLogs can
+        // lag behind the one that served getBlockNumber. Step the scan
+        // window down and keep looking in older blocks.
+        if (String(e).includes("out of range")) {
+          to = from;
+          continue;
+        }
+        throw e;
+      }
       const last = logs.at(-1);
       if (last) return last.args.tokenId as bigint;
-      if (from === 0n) break;
+      if (from === floor) break;
       to = from - 1n;
     }
     return null;

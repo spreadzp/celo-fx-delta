@@ -60,18 +60,74 @@ Current onchain record is cached in `deployments/identity.json`.
 - Serving layer (x402 gates, HTTP routes, settle) lives in the AgentBadge
   server; this repo is the agent core + onchain tooling.
 
-## How to run
+## Verify this submission (step by step)
 
-No secrets or wallets are needed for tests or the dry-run:
+No secrets, wallets or paid calls are needed — every check below is free.
+Prerequisite: [Bun](https://bun.sh) ≥ 1.1.
+
+**Step 1 — clone & install**
 
 ```bash
-bun install
-bun run test                                # vitest — 59 tests
-bun scripts/register-agent.ts --dry-run     # prints calldata + ERC-8021 tag, no keys
+git clone https://github.com/spreadzp/celo-fx-delta.git && cd celo-fx-delta
+bun install        # expect: dependencies installed, no postinstall secrets needed
+```
 
-# real registration (needs SELLER_PRIVATE_KEY in .env — never committed)
+**Step 2 — run the test suite**
+
+```bash
+bun run test       # expect: 5 test files, 59 tests, all passed
+```
+
+**Step 3 — reproduce the on-chain identity (no keys)**
+
+```bash
+FXDELTA_CHAIN=celo bun scripts/register-agent.ts --dry-run
+# expect:
+#   chain: celo (42220) rpc=https://forno.celo.org
+#   owner: 0x0F711f822EF1Ba1736F62CAAbb51F5502758186e
+#   tag:   celo_24acc530146f
+#   existing agent onchain: agentId=9980
+```
+
+`--dry-run` never touches private keys — it resolves the owner/agentId
+onchain and prints the calldata it would send.
+
+**Step 4 — hit the live endpoints**
+
+```bash
+curl -s https://agentbadge.xyz/api/fx-delta/health | head -c 400
+# expect: {"status":"ok", ... corridors: 22, sources connected}
+
+curl -s https://agentbadge.xyz/api/fx-delta/corridors | head -c 400
+# expect: JSON array of corridor objects
+
+curl -s -o /dev/null -w "%{http_code}" https://agentbadge.xyz/api/fx-delta/premium
+# expect: 402 — the x402 payment challenge IS the correct response
+# (accepts[] lists USDC 0xcebA9300…/USDT 0x48065fbB…, payTo = agent wallet, 5000 µ = 0.005 USDC)
+```
+
+**Step 5 — verify the tagged transactions**
+
+Open the five links in "On-chain artifacts" above, or check status
+programmatically:
+
+```bash
+curl -s "https://celo.blockscout.com/api/v2/transactions/0x6050b7c3caada3696ce1e0008ecb7e7dec6e7734c8123846cb29d05d0ca34b81" \
+  | grep -o '"status":"ok"'
+# expect: "status":"ok"  — repeat for the other four tx hashes
+```
+
+To see the ERC-8021 tag `celo_24acc530146f` in calldata, paste any of the
+tx hashes into https://builder-code-checker.vercel.app.
+
+## How to run
+
+Real registration / settle needs `SELLER_PRIVATE_KEY` in `.env` (never
+committed — see `.env.example`):
+
+```bash
 bun scripts/register-agent.ts               # celoSepolia (default)
-FXDELTA_CHAIN=celo bun scripts/register-agent.ts   # mainnet
+FXDELTA_CHAIN=celo bun scripts/register-agent.ts   # mainnet — idempotent, reuses agentId 9980
 ```
 
 Gas note: on mainnet the wallet pays native CELO — USDC is **not**
