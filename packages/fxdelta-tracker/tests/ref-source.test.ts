@@ -106,6 +106,38 @@ describe("FxRefSource cascade", () => {
     expect(second[0]).toMatchObject({ rate: 1501, frozen: true });
   });
 
+  it("buyfx — injected paid fn feeds the cascade", async () => {
+    const f = mkFetcher({}); // all free providers 404
+    const src = new FxRefSource({
+      fetcher: f,
+      now: () => OPEN_TS,
+      ttlMs: 0,
+      providers: ["erapi", "buyfx"],
+      buyFx: async () => ({ NGN: 1521.4 }),
+    });
+    const prices = await src.pollOnce(["NGN"]);
+    expect(prices[0]).toMatchObject({
+      provider: "buyfx",
+      rate: 1521.4,
+    });
+  });
+
+  it("buyfx unset → falls through to next provider", async () => {
+    const f = mkFetcher({
+      "er-api.com": () => ({ status: 404, body: {} }),
+      "frankfurter.dev": () => ({ status: 200, body: { rates: { BRL: 5.4 } } }),
+    });
+    const src = new FxRefSource({
+      fetcher: f,
+      now: () => OPEN_TS,
+      ttlMs: 0,
+      providers: ["buyfx", "frankfurter"],
+      // no buyFx injected → skipped
+    });
+    const prices = await src.pollOnce(["BRL"]);
+    expect(prices[0].provider).toBe("frankfurter");
+  });
+
   it("USD fiat → fixed 1.0 parity, no fetch", async () => {
     const src = new FxRefSource({
       fetcher: async () => ({ status: 500, json: async () => ({}) }),

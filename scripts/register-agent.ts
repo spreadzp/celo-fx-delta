@@ -192,7 +192,10 @@ async function main() {
     transport: http(rpcUrl),
   });
   const agentURI = buildAgentURI();
-  // Fee abstraction only when USDC is held — native CELO otherwise.
+  // Fee abstraction only when there is no native gas. USDC on this
+  // deployment is not whitelisted in Celo's FeeCurrencyDirectory, so a
+  // funded wallet pays gas in CELO ("Currency not in the directory"
+  // revert otherwise).
   const usdcAddr = USDC[chainName];
   const usdcBal = await pub
     .readContract({
@@ -202,8 +205,8 @@ async function main() {
       args: [account.address],
     })
     .catch(() => 0n);
-  const feeCurrency = usdcBal > 0n ? usdcAddr : undefined;
   const nativeBal = await pub.getBalance({ address: account.address });
+  const feeCurrency = usdcBal > 0n && nativeBal === 0n ? usdcAddr : undefined;
   console.log(
     `gas: ${feeCurrency ? "USDC fee abstraction" : "native CELO"} ` +
       `(native=${nativeBal}, usdc=${usdcBal})`,

@@ -6,6 +6,8 @@
  *   erapi     https://open.er-api.com/v6/latest/USD — broad free coverage
  *   frankfurter https://api.frankfurter.dev/v1/latest — ECB fiat set only
  *   bcptax    BCB PTAX OData — BRL only, weekday-only fixings
+ *   buyfx     SLICE-191-10 premium paid reference via @celo/buy gateway —
+ *             injected `buyFx` fn (server pays per call), last in cascade
  * (finnhub = env-reserved, not wired — needs API key)
  *
  * Market phases (simplified UTC, D-191-6): FX closes Fri 21:00 UTC →
@@ -17,7 +19,12 @@
  * Rate semantics match CorridorPrice.price: local units per 1 USD.
  */
 
-export type FxProviderId = "erapi" | "frankfurter" | "bcptax" | "finnhub";
+export type FxProviderId =
+  | "erapi"
+  | "frankfurter"
+  | "bcptax"
+  | "finnhub"
+  | "buyfx";
 export type MarketPhase = "open" | "closed" | "weekend";
 
 export interface FxRefPrice {
@@ -53,6 +60,13 @@ export interface FxRefSourceOptions {
   fetcher?: Fetcher;
   /** Injectable clock for tests. */
   now?: () => number;
+  /**
+   * SLICE-191-10: premium paid-rate fetch for the "buyfx" provider.
+   * Server supplies a fn that quotes+pays via @celo/buy gateway and
+   * returns a fiat→rate map. Skipped (falls through to next provider)
+   * when unset or returning undefined — buyfx costs money per call.
+   */
+  buyFx?: (fiats: readonly string[]) => Promise<RatesMap | undefined>;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +158,9 @@ export class FxRefSource {
   private readonly providers: FxProviderId[];
   private readonly pollMs: number;
   private readonly fetcher: Fetcher;
+  private readonly buyFx?: (
+    fiats: readonly string[],
+  ) => Promise<RatesMap | undefined>;
   private readonly now: () => number;
   private readonly cache = new Map<string, CacheEntry>();
   private running = false;
@@ -161,6 +178,7 @@ export class FxRefSource {
         return { status: res.status, json: () => res.json() };
       });
     this.now = opts.now ?? Date.now;
+    this.buyFx = opts.buyFx;
   }
 
   get connected(): boolean {
@@ -283,6 +301,8 @@ export class FxRefSource {
           return await fetchFrankfurter(fiats, this.fetcher);
         case "bcptax":
           return await fetchBcptax(fiats, this.fetcher, this.now);
+        case "buyfx":
+          return await this.buyFx?.(fiats);
         default:
           return undefined; // finnhub — env-reserved, not wired
       }
